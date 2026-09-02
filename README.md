@@ -42,6 +42,7 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Sistema de puntuación** clásico de Tetris (100 / 300 / 500 / 800 multiplicado por nivel).
 - **Niveles** que aumentan cada 10 líneas y aceleran la caída.
 - **Pausa** y **Game Over** con opción de reinicio.
+- **Toggle de tema claro/oscuro** (modo oscuro por defecto), con la preferencia guardada en `localStorage`.
 
 ---
 
@@ -98,11 +99,12 @@ Define la estructura visual:
 
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
 - Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza y la lista de controles.
+- Un botón `#theme-toggle` junto al título para alternar entre modo oscuro y claro.
 - Un overlay para los estados **PAUSA** y **GAME OVER**.
 
 ### 2. `style.css`
 
-Aporta el aspecto visual con estética _dark / retro arcade_: fondo oscuro, tipografía monoespaciada para los marcadores y _backdrop blur_ en los overlays.
+Aporta el aspecto visual con estética _dark / retro arcade_ por defecto: fondo oscuro, tipografía monoespaciada para los marcadores y _backdrop blur_ en los overlays. Los colores están definidos como variables CSS en `:root`, y la clase `body.light-theme` las sobrescribe con una paleta clara cuando el tema está activo.
 
 ### 3. `game.js`
 
@@ -117,6 +119,7 @@ Contiene toda la lógica del juego. A grandes rasgos:
 - **Puntuación**: usa la tabla clásica `[0, 100, 300, 500, 800]` multiplicada por el nivel actual; el hard drop suma 2 puntos por celda recorrida y el soft drop 1 punto por fila.
 - **Nivel y velocidad**: el nivel sube cada 10 líneas; la velocidad de caída se calcula como `max(100, 1000 − (level − 1) × 90)` milisegundos.
 - **Ghost piece** (`ghostY`): proyecta la posición final de la pieza actual hacia abajo y la dibuja con `globalAlpha = 0.2`.
+- **Tema claro/oscuro** (`applyTheme`, `initTheme`): alterna la clase `light-theme` en `<body>`, actualiza los colores de rejilla y highlight usados dentro del canvas (que no heredan del CSS) y persiste la preferencia en `localStorage` bajo la clave `tetris-theme`. Por defecto, si no hay preferencia guardada, el juego arranca en modo oscuro.
 
 ### Flujo del juego
 
