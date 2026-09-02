@@ -1,0 +1,100 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+jobs:
+  triage:
+    # No re-disparar por bots, y ceder el paso a claude.yml si el autor menciono @claude
+    if: |
+      github.event.sender.type != 'Bot' &&
+      !contains(github.event.issue.body, '@claude') &&
+      !contains(github.event.issue.title, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Issue Triage
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh label list:*),Bash(gh api:*)"
+          prompt: |
+            Eres el sistema de triage de issues de este repositorio (Tetris en JS vanilla:
+            index.html, style.css, game.js; sin build, sin dependencias, sin tests).
+
+            Issue a analizar: #${{ github.event.issue.number }} en ${{ github.repository }}.
+            Accion que disparo esto: ${{ github.event.action }}.
+
+            Sigue estos pasos en orden:
+
+            1. LEER EL ISSUE
+               Ejecuta: gh issue view ${{ github.event.issue.number }} --json title,body,labels,author
+
+            2. ENTENDER EL CODIGO
+               Lee game.js entero (~300 lineas, todo module-scoped, sin clases). Lee
+               index.html y style.css si el issue toca UI/render/estilos. Ten presentes
+               estas invariantes del proyecto (CLAUDE.md):
+               - COLS, ROWS, BLOCK en game.js deben cuadrar con width/height del
+                 <canvas id="board"> en index.html (COLS*BLOCK x ROWS*BLOCK, hoy 300x600).
+               - Los IDs del DOM estan duplicados entre index.html y los lookups del top
+                 de game.js; renombrar uno obliga a tocar ambos.
+               - README.md es la doc en prosa, esta en espanol y hay que mantenerlo
+                 sincronizado con cambios de comportamiento.
+               Funciones clave: collide, rotateCW, tryRotate, loop, lockPiece, merge,
+               clearLines, spawn, init, togglePause, draw, drawNext, drawBlock.
+
+            3. ETIQUETAR
+               Ejecuta: gh label list
+               Elige entre 1 y 3 labels EXCLUSIVAMENTE de esa lista. Esta PROHIBIDO
+               crear labels nuevos o inventar nombres. Aplica con:
+               gh issue edit ${{ github.event.issue.number }} --add-label "label1,label2"
+               Si los labels correctos ya estan puestos, no hagas nada en este paso.
+
+            4. DIAGNOSTICO
+               Redacta un diagnostico tecnico en espanol con EXACTAMENTE este formato
+               (la primera linea debe ser el marcador HTML tal cual):
+
+               <!-- claude-triage -->
+               ## Diagnostico automatico
+
+               **Tipo:** bug | mejora | duda | documentacion
+               **Severidad:** alta | media | baja
+               **Labels aplicados:** ...
+
+               ### Resumen
+               ### Zona del codigo afectada
+               (rutas concretas tipo `game.js:123` y nombres de funcion)
+               ### Causa probable / analisis
+               ### Propuesta de implementacion
+               (pasos concretos, accionables)
+               ### Criterios de aceptacion
+               ### Riesgos y efectos colaterales
+
+            5. PUBLICAR (IDEMPOTENTE)
+               Lista los comentarios:
+               gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments
+               Si YA existe un comentario cuyo cuerpo contiene "<!-- claude-triage -->",
+               ACTUALIZALO en vez de crear otro:
+               gh api --method PATCH repos/${{ github.repository }}/issues/comments/<COMMENT_ID> -f body=@archivo
+               Si no existe, crealo:
+               gh api --method POST repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments -f body=@archivo
+               (escribe el cuerpo a un archivo temporal y pasalo con -f body=@ruta para
+               preservar saltos de linea).
+
+            RESTRICCIONES
+            - No modifiques el cuerpo ni el titulo del issue.
+            - No toques ningun archivo de codigo. No abras PRs. No cierres el issue.
+            - No quites labels existentes; solo puedes anadir.
