@@ -45,6 +45,11 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Niveles** que aumentan cada 10 líneas y aceleran la caída.
 - **Pausa** y **Game Over** con opción de reinicio.
 - **Toggle de tema claro/oscuro** (modo oscuro por defecto), con la preferencia guardada en `localStorage`.
+- **Pantalla de inicio** con top 5 de records, mejor combo y líneas máximas; la partida no
+  arranca sola, hay que pulsar **JUGAR**.
+- **Tabla de records local** (top 5) guardada en `localStorage`, con seguimiento de **combo**
+  (rachas de _locks_ que limpian línea) y persistencia de **mejor combo** y **líneas máximas**
+  entre partidas.
 
 ---
 
@@ -102,7 +107,8 @@ Define la estructura visual:
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
 - Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza y la lista de controles.
 - Un botón `#theme-toggle` junto al título para alternar entre modo oscuro y claro.
-- Un overlay para los estados **PAUSA** y **GAME OVER**.
+- Un `#overlay` que contiene la caja de **PAUSA**, la pantalla de inicio `#start-screen`
+  (top 5 + JUGAR) y la pantalla de game over `#gameover-screen` (records + guardar nombre).
 
 ### 2. `style.css`
 
@@ -122,12 +128,19 @@ Contiene toda la lógica del juego. A grandes rasgos:
 - **Nivel y velocidad**: el nivel sube cada 10 líneas; la velocidad de caída se calcula como `max(100, 1000 − (level − 1) × 90)` milisegundos.
 - **Ghost piece** (`ghostY`): proyecta la posición final de la pieza actual hacia abajo y la dibuja con `globalAlpha = 0.2`.
 - **Tema claro/oscuro** (`applyTheme`, `initTheme`): alterna la clase `light-theme` en `<body>`, actualiza los colores de rejilla y highlight usados dentro del canvas (que no heredan del CSS) y persiste la preferencia en `localStorage` bajo la clave `tetris-theme`. Por defecto, si no hay preferencia guardada, el juego arranca en modo oscuro.
+- **Records locales** (`loadScores`, `saveScores`, `qualifies`, `addScore`, `resetScores`): siguen el mismo patrón que el tema. Todo se guarda bajo la clave `tetris-scores` con la forma `{ scores: [{ name, score }], bestCombo, maxLines }`. `loadScores` valida el JSON de forma defensiva (que sea objeto, `scores` un array, `name` string, `score` numérico finito) y recorta a top 5 ordenado descendente; cualquier fallo de parseo o de `localStorage` cae en `try/catch` y deja los valores a cero. `qualifies(score)` decide si una puntuación entra en el top 5.
+- **Combo** (`combo`, `bestComboRun`): dentro de `clearLines`, si se limpia ≥1 línea `combo++` y se actualiza `bestComboRun`; si un _lock_ no limpia nada, `combo = 0`. Al terminar la partida, `endGame` consolida `bestCombo = max(bestCombo, bestComboRun)` y `maxLines = max(maxLines, lines)` y persiste ambos globales.
+- **Pantallas** (`#start-screen`, `#gameover-screen`, dentro de `#overlay`): `init(startLevel = 1)` resetea el estado y muestra `#start-screen` (top 5 + mejor combo + líneas máximas + botón **JUGAR**) pero **no** arranca la partida; `startGame()` hace el primer `spawn` y lanza el bucle RAF. `endGame` puebla y muestra `#gameover-screen` con la puntuación final, un `<input>` de nombre si `qualifies(score)`, la tabla top 5 (resaltando la fila recién añadida con `.records-highlight`), un botón **Reiniciar** y un botón **Resetear records** con confirmación _inline_ de dos clics (nunca `confirm()`). Tanto el botón "Reiniciar" del game over como el `#restart-btn` heredado vuelven a `init()`, es decir, a la pantalla de inicio.
 
 ### Flujo del juego
 
 ```
-init()
+init(startLevel = 1)
   ├─ createBoard()                  → matriz vacía
+  ├─ reset de estado + combo
+  └─ showStartScreen()              → top 5, mejor combo, líneas máximas, botón JUGAR
+        ↓  (click en JUGAR)
+startGame()
   ├─ next = randomPiece()
   ├─ spawn()                        → mueve next a current y genera nueva next
   └─ requestAnimationFrame(loop)
@@ -141,7 +154,36 @@ init()
    keydown → mover / rotar / soft-drop / hard-drop / pausa
 ```
 
-Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara `endGame()` y se muestra el overlay de **Game Over**.
+Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara `endGame()`, que consolida los records globales (`bestCombo`, `maxLines`), los persiste y muestra `#gameover-screen`.
+
+---
+
+## Records y persistencia
+
+Los records viven en `localStorage` bajo la clave **`tetris-scores`** con esta forma:
+
+```json
+{
+  "scores": [ { "name": "ANA", "score": 12800 }, ... ],
+  "bestCombo": 5,
+  "maxLines": 42
+}
+```
+
+- **`scores`**: top 5 ordenado de mayor a menor. Se valida al cargar (array, `name` string,
+  `score` numérico finito) y se recorta a 5.
+- **`bestCombo`**: combo más alto logrado en cualquier partida. Un "combo" es una racha de
+  bloqueos consecutivos que limpian al menos una línea; se rompe (vuelve a 0) en cuanto un
+  bloqueo no limpia nada.
+- **`maxLines`**: mayor número de líneas eliminadas en una sola partida.
+
+Todo acceso a `localStorage` está envuelto en `try/catch`, así que si el almacenamiento no
+está disponible el juego sigue funcionando sin persistencia.
+
+En el **game over**, si la puntuación entra en el top 5 aparece un campo de texto para el
+nombre; la fila recién añadida se resalta en la tabla. El botón **Resetear records** borra
+`scores`, `bestCombo` y `maxLines`, y pide confirmación con un segundo clic (nunca abre un
+`confirm()` del navegador).
 
 ---
 

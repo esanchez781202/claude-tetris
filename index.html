@@ -48,10 +48,40 @@
     </div>
 
     <div id="overlay" class="overlay hidden">
-      <div class="overlay-box">
+      <div class="overlay-box hidden">
         <p id="overlay-title">GAME OVER</p>
         <p id="overlay-score"></p>
         <button id="restart-btn">Reiniciar</button>
+      </div>
+
+      <div id="start-screen" class="records-screen hidden">
+        <p class="records-title">TETRIS</p>
+        <div class="records-stats">
+          <span>Mejor combo: <b id="start-best-combo">0</b></span>
+          <span>Líneas máximas: <b id="start-max-lines">0</b></span>
+        </div>
+        <table class="records-table">
+          <thead><tr><th>#</th><th>Nombre</th><th>Puntos</th></tr></thead>
+          <tbody id="start-scores"></tbody>
+        </table>
+        <button id="play-btn">JUGAR</button>
+      </div>
+
+      <div id="gameover-screen" class="records-screen hidden">
+        <p class="records-title records-over">GAME OVER</p>
+        <p class="records-final">Puntuación: <b id="go-score">0</b></p>
+        <div id="go-name-row" class="records-name-row hidden">
+          <input type="text" id="go-name" maxlength="12" placeholder="Tu nombre" autocomplete="off" />
+          <button id="go-save">Guardar</button>
+        </div>
+        <table class="records-table">
+          <thead><tr><th>#</th><th>Nombre</th><th>Puntos</th></tr></thead>
+          <tbody id="go-scores"></tbody>
+        </table>
+        <div class="records-actions">
+          <button id="go-restart">Reiniciar</button>
+          <button id="go-reset">Resetear records</button>
+        </div>
       </div>
     </div>
   </div>

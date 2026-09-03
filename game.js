@@ -38,17 +38,46 @@ const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
 const levelEl = document.getElementById('level');
 const overlay = document.getElementById('overlay');
+const overlayBox = document.querySelector('.overlay-box');
 const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggleBtn = document.getElementById('theme-toggle');
 
+// ---- records: elementos de las pantallas de inicio / game over ----
+const startScreen = document.getElementById('start-screen');
+const startScoresEl = document.getElementById('start-scores');
+const startBestComboEl = document.getElementById('start-best-combo');
+const startMaxLinesEl = document.getElementById('start-max-lines');
+const playBtn = document.getElementById('play-btn');
+const gameoverScreen = document.getElementById('gameover-screen');
+const goScoreEl = document.getElementById('go-score');
+const goNameRow = document.getElementById('go-name-row');
+const goNameInput = document.getElementById('go-name');
+const goSaveBtn = document.getElementById('go-save');
+const goScoresEl = document.getElementById('go-scores');
+const goRestartBtn = document.getElementById('go-restart');
+const goResetBtn = document.getElementById('go-reset');
+
 const THEME_KEY = 'tetris-theme';
 const GRID_COLORS = { dark: '#22222e', light: '#d5d5e0' };
 const HIGHLIGHT_COLORS = { dark: 'rgba(255,255,255,0.12)', light: 'rgba(0,0,0,0.12)' };
 
+const SCORES_KEY = 'tetris-scores';
+const MAX_SCORES = 5;
+const MAX_NAME = 12;
+
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 let theme = 'dark';
+// ---- records: estado ----
+let scores = [];        // top 5 { name, score } ordenado desc
+let bestCombo = 0;      // mejor combo global (entre partidas)
+let maxLines = 0;       // líneas máximas en una partida (entre partidas)
+let combo = 0;          // combo de la partida actual
+let bestComboRun = 0;   // mejor combo de la partida actual
+let running = false;    // hay una partida en curso
+let scoreSubmitted = false; // ya se guardó la puntuación de este game over
+let resetArmed = false;     // confirmación inline del botón "Resetear records"
 
 function applyTheme(t) {
   theme = t;
@@ -64,6 +93,162 @@ function initTheme() {
 
 themeToggleBtn.addEventListener('click', () => {
   applyTheme(theme === 'light' ? 'dark' : 'light');
+});
+
+// ---- records: persistencia sobre localStorage['tetris-scores'] ----
+// Estructura guardada: { scores: [{name, score}], bestCombo: n, maxLines: n }
+
+function loadScores() {
+  scores = [];
+  bestCombo = 0;
+  maxLines = 0;
+  try {
+    const raw = localStorage.getItem(SCORES_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return;
+    const arr = Array.isArray(data.scores) ? data.scores : [];
+    scores = arr
+      .filter(e => e && typeof e.name === 'string' &&
+        typeof e.score === 'number' && isFinite(e.score))
+      .map(e => ({ name: e.name.slice(0, MAX_NAME), score: Math.floor(e.score) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_SCORES);
+    if (typeof data.bestCombo === 'number' && isFinite(data.bestCombo)) {
+      bestCombo = Math.max(0, Math.floor(data.bestCombo));
+    }
+    if (typeof data.maxLines === 'number' && isFinite(data.maxLines)) {
+      maxLines = Math.max(0, Math.floor(data.maxLines));
+    }
+  } catch (e) {
+    scores = [];
+    bestCombo = 0;
+    maxLines = 0;
+  }
+}
+
+function saveScores() {
+  try {
+    localStorage.setItem(SCORES_KEY, JSON.stringify({ scores, bestCombo, maxLines }));
+  } catch (e) {
+    /* almacenamiento no disponible: se ignora */
+  }
+}
+
+function qualifies(s) {
+  if (!(s > 0)) return false;
+  if (scores.length < MAX_SCORES) return true;
+  return s > scores[scores.length - 1].score;
+}
+
+function addScore(name, s) {
+  const clean = String(name || '').trim().slice(0, MAX_NAME) || 'ANON';
+  const entry = { name: clean, score: Math.floor(s) };
+  scores.push(entry);
+  scores.sort((a, b) => b.score - a.score);
+  scores = scores.slice(0, MAX_SCORES);
+  saveScores();
+  return entry;
+}
+
+function resetScores() {
+  scores = [];
+  bestCombo = 0;
+  maxLines = 0;
+  saveScores();
+}
+
+// Repinta una tabla top 5; resalta la fila cuyo objeto === highlight
+function renderScoreRows(tbody, highlight) {
+  tbody.innerHTML = '';
+  if (!scores.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 3;
+    td.className = 'records-empty';
+    td.textContent = 'Sin records todavía';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+  scores.forEach((e, i) => {
+    const tr = document.createElement('tr');
+    if (highlight && e === highlight) tr.className = 'records-highlight';
+    const rank = document.createElement('td');
+    rank.textContent = String(i + 1);
+    const nm = document.createElement('td');
+    nm.textContent = e.name;
+    const sc = document.createElement('td');
+    sc.textContent = e.score.toLocaleString();
+    tr.append(rank, nm, sc);
+    tbody.appendChild(tr);
+  });
+}
+
+function showStartScreen() {
+  overlayBox.classList.add('hidden');
+  gameoverScreen.classList.add('hidden');
+  startBestComboEl.textContent = bestCombo.toLocaleString();
+  startMaxLinesEl.textContent = maxLines.toLocaleString();
+  renderScoreRows(startScoresEl, null);
+  startScreen.classList.remove('hidden');
+  overlay.classList.remove('hidden');
+}
+
+function showGameoverScreen() {
+  overlayBox.classList.add('hidden');
+  startScreen.classList.add('hidden');
+  goScoreEl.textContent = score.toLocaleString();
+  scoreSubmitted = false;
+  disarmReset();
+  if (qualifies(score)) {
+    goNameInput.value = '';
+    goNameRow.classList.remove('hidden');
+  } else {
+    goNameRow.classList.add('hidden');
+  }
+  renderScoreRows(goScoresEl, null);
+  gameoverScreen.classList.remove('hidden');
+  overlay.classList.remove('hidden');
+}
+
+function submitScore() {
+  if (scoreSubmitted || !qualifies(score)) return;
+  const entry = addScore(goNameInput.value, score);
+  scoreSubmitted = true;
+  goNameRow.classList.add('hidden');
+  renderScoreRows(goScoresEl, entry);
+}
+
+function disarmReset() {
+  resetArmed = false;
+  goResetBtn.textContent = 'Resetear records';
+  goResetBtn.classList.remove('armed');
+}
+
+playBtn.addEventListener('click', startGame);
+goRestartBtn.addEventListener('click', () => init());
+goSaveBtn.addEventListener('click', submitScore);
+goNameInput.addEventListener('keydown', e => {
+  e.stopPropagation();
+  if (e.code === 'Enter') submitScore();
+});
+goResetBtn.addEventListener('click', () => {
+  if (!resetArmed) {
+    resetArmed = true;
+    goResetBtn.textContent = '¿Seguro?';
+    goResetBtn.classList.add('armed');
+    return;
+  }
+  resetScores();
+  disarmReset();
+  // la tabla queda vacía; se puede volver a guardar la puntuación actual
+  if (!scoreSubmitted && qualifies(score)) {
+    goNameRow.classList.remove('hidden');
+  } else {
+    goNameRow.classList.add('hidden');
+  }
+  renderScoreRows(goScoresEl, null);
 });
 
 function createBoard() {
@@ -128,11 +313,17 @@ function clearLines() {
     }
   }
   if (cleared) {
+    // combo: sube en cada lock que limpia >=1 linea
+    combo++;
+    if (combo > bestComboRun) bestComboRun = combo;
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
     level = Math.floor(lines / 10) + 1;
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
     updateHUD();
+  } else {
+    // lock sin lineas: se rompe el combo
+    combo = 0;
   }
 }
 
@@ -245,22 +436,30 @@ function drawNext() {
 
 function endGame() {
   gameOver = true;
+  running = false;
   cancelAnimationFrame(animId);
-  overlayTitle.textContent = 'GAME OVER';
-  overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
-  overlay.classList.remove('hidden');
+  // consolidar records globales de esta partida
+  if (bestComboRun > bestCombo) bestCombo = bestComboRun;
+  if (lines > maxLines) maxLines = lines;
+  saveScores();
+  showGameoverScreen();
 }
 
 function togglePause() {
-  if (gameOver) return;
+  if (gameOver || !running) return;
   paused = !paused;
   if (!paused) {
+    overlayBox.classList.add('hidden');
+    overlay.classList.add('hidden');
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
     overlayTitle.textContent = 'PAUSA';
     overlayScore.textContent = '';
+    startScreen.classList.add('hidden');
+    gameoverScreen.classList.add('hidden');
+    overlayBox.classList.remove('hidden');
     overlay.classList.remove('hidden');
   }
 }
@@ -283,27 +482,46 @@ function loop(ts) {
   animId = requestAnimationFrame(loop);
 }
 
-function init() {
+// init() resetea el estado y muestra la pantalla de inicio.
+// NO arranca la partida: hay que pulsar JUGAR (-> startGame()).
+function init(startLevel = 1) {
+  cancelAnimationFrame(animId);
   board = createBoard();
   score = 0;
   lines = 0;
-  level = 1;
+  level = Math.max(1, Math.floor(startLevel) || 1);
+  combo = 0;
+  bestComboRun = 0;
   paused = false;
   gameOver = false;
-  dropInterval = 1000;
+  running = false;
+  dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   dropAccum = 0;
-  lastTime = performance.now();
+  current = null;
+  next = null;
+  updateHUD();
+  showStartScreen();
+}
+
+// startGame() arranca el spawn y el bucle RAF.
+function startGame() {
+  if (running) return;
+  startScreen.classList.add('hidden');
+  overlay.classList.add('hidden');
+  paused = false;
+  gameOver = false;
+  running = true;
+  dropAccum = 0;
   next = randomPiece();
   spawn();
   updateHUD();
-  overlay.classList.add('hidden');
-  cancelAnimationFrame(animId);
+  lastTime = performance.now();
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
   if (e.code === 'KeyP') { togglePause(); return; }
-  if (paused || gameOver) return;
+  if (!running || paused || gameOver || !current) return;
   switch (e.code) {
     case 'ArrowLeft':
       if (!collide(current.shape, current.x - 1, current.y)) current.x--;
@@ -326,7 +544,8 @@ document.addEventListener('keydown', e => {
   updateHUD();
 });
 
-restartBtn.addEventListener('click', init);
+restartBtn.addEventListener('click', () => init());
 
 initTheme();
+loadScores();
 init();
