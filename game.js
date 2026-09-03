@@ -140,6 +140,7 @@ function initSkin() {
 
 skinSelect.addEventListener('change', () => {
   applySkin(skinSelect.value);
+  skinSelect.blur();
 });
 
 function createBoard() {
