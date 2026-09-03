@@ -43,7 +43,10 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Vista previa** de la siguiente pieza.
 - **Sistema de puntuación** clásico de Tetris (100 / 300 / 500 / 800 multiplicado por nivel).
 - **Niveles** que aumentan cada 10 líneas y aceleran la caída.
-- **Pausa** y **Game Over** con opción de reinicio.
+- **Menú de pausa** modal (`P` o `Esc`) con _Reanudar_, _Reiniciar_, _Ver controles_ y
+  selector de **nivel inicial** (1–15, persistido en `localStorage` bajo `tetris-settings`
+  y aplicado a la siguiente partida). Navegable con flechas + `Enter`; mientras está abierto
+  se bloquean todos los controles de juego. **Game Over** con opción de reinicio.
 - **Toggle de tema claro/oscuro** (modo oscuro por defecto), con la preferencia guardada en `localStorage`.
 
 ---
@@ -87,7 +90,10 @@ Después abre `http://localhost:8000` en el navegador.
 | `↑` o `X` | Rotar la pieza en sentido horario |
 | `↓`       | Soft drop (bajar más rápido)      |
 | `Espacio` | Hard drop (caída instantánea)     |
-| `P`       | Pausar / reanudar                 |
+| `P` / `Esc` | Abrir / cerrar el menú de pausa |
+
+Dentro del menú de pausa: `↑` / `↓` mueven el foco, `Enter` activa la opción, y el
+selector de **Nivel inicial** fija el nivel con el que arrancará la próxima partida.
 
 ---
 
@@ -102,7 +108,8 @@ Define la estructura visual:
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
 - Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza y la lista de controles.
 - Un botón `#theme-toggle` junto al título para alternar entre modo oscuro y claro.
-- Un overlay para los estados **PAUSA** y **GAME OVER**.
+- Un overlay compartido: `.overlay-box` para **GAME OVER** y `#pause-menu` para el
+  **menú de pausa** (se muestran de forma independiente).
 
 ### 2. `style.css`
 
@@ -138,7 +145,8 @@ init()
      ├─ draw()  (grid + tablero + ghost + pieza actual)
      └─ requestAnimationFrame(loop)
 
-   keydown → mover / rotar / soft-drop / hard-drop / pausa
+   keydown → mover / rotar / soft-drop / hard-drop
+           → P o Esc abre `#pause-menu` (bloquea el juego); init(startLevel) reinicia
 ```
 
 Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara `endGame()` y se muestra el overlay de **Game Over**.
