@@ -13,7 +13,7 @@ const COLORS = [
   '#e57373', // Z - red
   '#64b5f6', // J - light blue
   '#ffb74d', // L - orange
-  '#b0bec5', // Tuerca - gris acero
+  '#ff9800', // Tuerca - naranja
 ];
 
 const PIECES = [
