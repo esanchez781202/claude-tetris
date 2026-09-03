@@ -24,6 +24,7 @@ Implementación del clásico **Tetris** en JavaScript vanilla, usando HTML5 Canv
     - [Flujo del juego](#flujo-del-juego)
   - [Tecnologías](#tecnologías)
   - [Estructura del proyecto](#estructura-del-proyecto)
+  - [Skins / temas visuales](#skins--temas-visuales)
   - [Personalización](#personalización)
   - [Licencia](#licencia)
 
@@ -45,6 +46,7 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Niveles** que aumentan cada 10 líneas y aceleran la caída.
 - **Pausa** y **Game Over** con opción de reinicio.
 - **Toggle de tema claro/oscuro** (modo oscuro por defecto), con la preferencia guardada en `localStorage`.
+- **Skins visuales** (`retro`, `neon`, `pastel`, `pixel`) seleccionables desde el panel lateral, con la preferencia guardada en `localStorage`.
 
 ---
 
@@ -100,7 +102,7 @@ El juego se compone de tres archivos que cooperan:
 Define la estructura visual:
 
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
-- Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza y la lista de controles.
+- Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza, un selector `#skin-select` de skin visual y la lista de controles.
 - Un botón `#theme-toggle` junto al título para alternar entre modo oscuro y claro.
 - Un overlay para los estados **PAUSA** y **GAME OVER**.
 
@@ -122,6 +124,7 @@ Contiene toda la lógica del juego. A grandes rasgos:
 - **Nivel y velocidad**: el nivel sube cada 10 líneas; la velocidad de caída se calcula como `max(100, 1000 − (level − 1) × 90)` milisegundos.
 - **Ghost piece** (`ghostY`): proyecta la posición final de la pieza actual hacia abajo y la dibuja con `globalAlpha = 0.2`.
 - **Tema claro/oscuro** (`applyTheme`, `initTheme`): alterna la clase `light-theme` en `<body>`, actualiza los colores de rejilla y highlight usados dentro del canvas (que no heredan del CSS) y persiste la preferencia en `localStorage` bajo la clave `tetris-theme`. Por defecto, si no hay preferencia guardada, el juego arranca en modo oscuro.
+- **Skins visuales** (`applySkin`, `initSkin`): ver la sección [Skins / temas visuales](#skins--temas-visuales).
 
 ### Flujo del juego
 
@@ -169,6 +172,43 @@ Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara
 
 ---
 
+## Skins / temas visuales
+
+Además del toggle claro/oscuro, el juego incluye un selector `#skin-select` en el
+panel lateral con cuatro skins. La elección se guarda en `localStorage` bajo la
+clave `tetris-skin` (acceso envuelto en `try/catch`) y se restaura al recargar.
+
+Toda la lógica vive en la constante `SKINS` de `game.js` y en el par
+`applySkin(name)` / `initSkin()` (calcado de `applyTheme` / `initTheme`). Cada
+entrada de `SKINS` aporta: una paleta de 8 colores (equivalente a `COLORS[1..8]`),
+el color de rejilla y el de highlight por tema, y un `mode` de dibujo de bloque
+que `drawBlock` interpreta. `drawBlock` y `drawGrid` leen siempre de la skin
+activa, así que el `#next-canvas` hereda la skin automáticamente y el parámetro
+`alpha` (ghost) sigue funcionando en las cuatro.
+
+| Skin     | Modo de bloque                                                                 |
+| -------- | ----------------------------------------------------------------------------- |
+| `retro`  | Comportamiento por defecto **exacto**: colores planos + highlight superior de 4px. |
+| `neon`   | `ctx.shadowBlur` / `shadowColor` para un halo de luz. El `shadowBlur` se resetea a `0` tras cada bloque para no contaminar rejilla ni ghost. |
+| `pastel` | Colores suaves + esquinas redondeadas con `ctx.roundRect` (fallback a `fillRect` si el navegador no lo soporta). |
+| `pixel`  | Bloque plano + patrón de puntos oscuros dibujado encima como textura.        |
+
+### Relación con el tema claro/oscuro
+
+Las skins conviven con el toggle claro/oscuro (`theme` global, `body.light-theme`):
+
+- `retro`, `pastel` y `pixel` **respetan el tema**: su color de rejilla y de
+  highlight cambian según haya modo claro u oscuro activo.
+- `neon` **fuerza su estética oscura**: aplica `body.skin-neon` en el `<body>`,
+  lo que pinta el fondo de ambos canvas de negro vía CSS, y usa rejilla y
+  highlight fijos (idénticos en `dark` y `light`) para mantener el contraste del
+  glow independientemente del toggle.
+
+Al cambiar de skin se guarda la preferencia, se actualiza la variable de skin
+activa y se repinta de inmediato (`draw()` + `drawNext()`) sin recargar la página.
+
+---
+
 ## Personalización
 
 Algunos parámetros fáciles de tunear en `game.js`:
@@ -179,6 +219,7 @@ Algunos parámetros fáciles de tunear en `game.js`:
 | `ROWS`         | Filas del tablero                        | `20`                  |
 | `BLOCK`        | Tamaño en píxeles de cada celda          | `30`                  |
 | `COLORS`       | Paleta de colores por tipo de pieza      | 8 colores             |
+| `SKINS`        | Skins visuales (paleta, rejilla, modo de bloque) | `retro` / `neon` / `pastel` / `pixel` |
 | `LINE_SCORES`  | Puntos por 1, 2, 3 o 4 líneas eliminadas | `[0,100,300,500,800]` |
 | `dropInterval` | Velocidad inicial de caída en ms         | `1000`                |
 
