@@ -24,6 +24,7 @@ Implementación del clásico **Tetris** en JavaScript vanilla, usando HTML5 Canv
     - [Flujo del juego](#flujo-del-juego)
   - [Tecnologías](#tecnologías)
   - [Estructura del proyecto](#estructura-del-proyecto)
+  - [Skins / temas visuales](#skins--temas-visuales)
   - [Personalización](#personalización)
   - [Licencia](#licencia)
 
@@ -43,13 +44,17 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Vista previa** de la siguiente pieza.
 - **Sistema de puntuación** clásico de Tetris (100 / 300 / 500 / 800 multiplicado por nivel).
 - **Niveles** que aumentan cada 10 líneas y aceleran la caída.
-- **Pausa** y **Game Over** con opción de reinicio.
+- **Menú de pausa** modal (`P` o `Esc`) con _Reanudar_, _Reiniciar_, _Ver controles_ y
+  selector de **nivel inicial** (1–15, persistido en `localStorage` bajo `tetris-settings`
+  y aplicado a la siguiente partida). Navegable con flechas + `Enter`; mientras está abierto
+  se bloquean todos los controles de juego. **Game Over** con opción de reinicio.
 - **Toggle de tema claro/oscuro** (modo oscuro por defecto), con la preferencia guardada en `localStorage`.
 - **Pantalla de inicio** con top 5 de records, mejor combo y líneas máximas; la partida no
   arranca sola, hay que pulsar **JUGAR**.
 - **Tabla de records local** (top 5) guardada en `localStorage`, con seguimiento de **combo**
   (rachas de _locks_ que limpian línea) y persistencia de **mejor combo** y **líneas máximas**
   entre partidas.
+- **Skins visuales** (`retro`, `neon`, `pastel`, `pixel`) seleccionables desde el panel lateral, con la preferencia guardada en `localStorage`.
 
 ---
 
@@ -92,7 +97,10 @@ Después abre `http://localhost:8000` en el navegador.
 | `↑` o `X` | Rotar la pieza en sentido horario |
 | `↓`       | Soft drop (bajar más rápido)      |
 | `Espacio` | Hard drop (caída instantánea)     |
-| `P`       | Pausar / reanudar                 |
+| `P` / `Esc` | Abrir / cerrar el menú de pausa |
+
+Dentro del menú de pausa: `↑` / `↓` mueven el foco, `Enter` activa la opción, y el
+selector de **Nivel inicial** fija el nivel con el que arrancará la próxima partida.
 
 ---
 
@@ -105,10 +113,12 @@ El juego se compone de tres archivos que cooperan:
 Define la estructura visual:
 
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
-- Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza y la lista de controles.
+- Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza, un selector `#skin-select` de skin visual y la lista de controles.
 - Un botón `#theme-toggle` junto al título para alternar entre modo oscuro y claro.
 - Un `#overlay` que contiene la caja de **PAUSA**, la pantalla de inicio `#start-screen`
   (top 5 + JUGAR) y la pantalla de game over `#gameover-screen` (records + guardar nombre).
+- Un overlay compartido: `.overlay-box` para **GAME OVER** y `#pause-menu` para el
+  **menú de pausa** (se muestran de forma independiente).
 
 ### 2. `style.css`
 
@@ -131,6 +141,7 @@ Contiene toda la lógica del juego. A grandes rasgos:
 - **Records locales** (`loadScores`, `saveScores`, `qualifies`, `addScore`, `resetScores`): siguen el mismo patrón que el tema. Todo se guarda bajo la clave `tetris-scores` con la forma `{ scores: [{ name, score }], bestCombo, maxLines }`. `loadScores` valida el JSON de forma defensiva (que sea objeto, `scores` un array, `name` string, `score` numérico finito) y recorta a top 5 ordenado descendente; cualquier fallo de parseo o de `localStorage` cae en `try/catch` y deja los valores a cero. `qualifies(score)` decide si una puntuación entra en el top 5.
 - **Combo** (`combo`, `bestComboRun`): dentro de `clearLines`, si se limpia ≥1 línea `combo++` y se actualiza `bestComboRun`; si un _lock_ no limpia nada, `combo = 0`. Al terminar la partida, `endGame` consolida `bestCombo = max(bestCombo, bestComboRun)` y `maxLines = max(maxLines, lines)` y persiste ambos globales.
 - **Pantallas** (`#start-screen`, `#gameover-screen`, dentro de `#overlay`): `init(startLevel = 1)` resetea el estado y muestra `#start-screen` (top 5 + mejor combo + líneas máximas + botón **JUGAR**) pero **no** arranca la partida; `startGame()` hace el primer `spawn` y lanza el bucle RAF. `endGame` puebla y muestra `#gameover-screen` con la puntuación final, un `<input>` de nombre si `qualifies(score)`, la tabla top 5 (resaltando la fila recién añadida con `.records-highlight`), un botón **Reiniciar** y un botón **Resetear records** con confirmación _inline_ de dos clics (nunca `confirm()`). Tanto el botón "Reiniciar" del game over como el `#restart-btn` heredado vuelven a `init()`, es decir, a la pantalla de inicio.
+- **Skins visuales** (`applySkin`, `initSkin`): ver la sección [Skins / temas visuales](#skins--temas-visuales).
 
 ### Flujo del juego
 
@@ -151,7 +162,8 @@ startGame()
      ├─ draw()  (grid + tablero + ghost + pieza actual)
      └─ requestAnimationFrame(loop)
 
-   keydown → mover / rotar / soft-drop / hard-drop / pausa
+   keydown → mover / rotar / soft-drop / hard-drop
+           → P o Esc abre `#pause-menu` (bloquea el juego); init(startLevel) reinicia
 ```
 
 Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara `endGame()`, que consolida los records globales (`bestCombo`, `maxLines`), los persiste y muestra `#gameover-screen`.
@@ -211,6 +223,43 @@ nombre; la fila recién añadida se resalta en la tabla. El botón **Resetear re
 
 ---
 
+## Skins / temas visuales
+
+Además del toggle claro/oscuro, el juego incluye un selector `#skin-select` en el
+panel lateral con cuatro skins. La elección se guarda en `localStorage` bajo la
+clave `tetris-skin` (acceso envuelto en `try/catch`) y se restaura al recargar.
+
+Toda la lógica vive en la constante `SKINS` de `game.js` y en el par
+`applySkin(name)` / `initSkin()` (calcado de `applyTheme` / `initTheme`). Cada
+entrada de `SKINS` aporta: una paleta de 8 colores (equivalente a `COLORS[1..8]`),
+el color de rejilla y el de highlight por tema, y un `mode` de dibujo de bloque
+que `drawBlock` interpreta. `drawBlock` y `drawGrid` leen siempre de la skin
+activa, así que el `#next-canvas` hereda la skin automáticamente y el parámetro
+`alpha` (ghost) sigue funcionando en las cuatro.
+
+| Skin     | Modo de bloque                                                                 |
+| -------- | ----------------------------------------------------------------------------- |
+| `retro`  | Comportamiento por defecto **exacto**: colores planos + highlight superior de 4px. |
+| `neon`   | `ctx.shadowBlur` / `shadowColor` para un halo de luz. El `shadowBlur` se resetea a `0` tras cada bloque para no contaminar rejilla ni ghost. |
+| `pastel` | Colores suaves + esquinas redondeadas con `ctx.roundRect` (fallback a `fillRect` si el navegador no lo soporta). |
+| `pixel`  | Bloque plano + patrón de puntos oscuros dibujado encima como textura.        |
+
+### Relación con el tema claro/oscuro
+
+Las skins conviven con el toggle claro/oscuro (`theme` global, `body.light-theme`):
+
+- `retro`, `pastel` y `pixel` **respetan el tema**: su color de rejilla y de
+  highlight cambian según haya modo claro u oscuro activo.
+- `neon` **fuerza su estética oscura**: aplica `body.skin-neon` en el `<body>`,
+  lo que pinta el fondo de ambos canvas de negro vía CSS, y usa rejilla y
+  highlight fijos (idénticos en `dark` y `light`) para mantener el contraste del
+  glow independientemente del toggle.
+
+Al cambiar de skin se guarda la preferencia, se actualiza la variable de skin
+activa y se repinta de inmediato (`draw()` + `drawNext()`) sin recargar la página.
+
+---
+
 ## Personalización
 
 Algunos parámetros fáciles de tunear en `game.js`:
@@ -221,6 +270,7 @@ Algunos parámetros fáciles de tunear en `game.js`:
 | `ROWS`         | Filas del tablero                        | `20`                  |
 | `BLOCK`        | Tamaño en píxeles de cada celda          | `30`                  |
 | `COLORS`       | Paleta de colores por tipo de pieza      | 8 colores             |
+| `SKINS`        | Skins visuales (paleta, rejilla, modo de bloque) | `retro` / `neon` / `pastel` / `pixel` |
 | `LINE_SCORES`  | Puntos por 1, 2, 3 o 4 líneas eliminadas | `[0,100,300,500,800]` |
 | `dropInterval` | Velocidad inicial de caída en ms         | `1000`                |
 

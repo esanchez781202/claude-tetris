@@ -13,7 +13,7 @@ const COLORS = [
   '#e57373', // Z - red
   '#64b5f6', // J - light blue
   '#ffb74d', // L - orange
-  '#b0bec5', // Tuerca - gris acero
+  '#ff9800', // Tuerca - naranja
 ];
 
 const PIECES = [
@@ -43,6 +43,18 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggleBtn = document.getElementById('theme-toggle');
+const skinSelect = document.getElementById('skin-select');
+
+// --- menú de pausa ---
+const overlayBox = document.querySelector('.overlay-box');
+const pauseMenu = document.getElementById('pause-menu');
+const pauseMain = document.getElementById('pause-main');
+const pauseControls = document.getElementById('pause-controls');
+const resumeBtn = document.getElementById('pm-resume');
+const menuRestartBtn = document.getElementById('pm-restart');
+const showControlsBtn = document.getElementById('pm-controls');
+const controlsBackBtn = document.getElementById('pm-controls-back');
+const levelSelect = document.getElementById('pm-level-select');
 
 // ---- records: elementos de las pantallas de inicio / game over ----
 const startScreen = document.getElementById('start-screen');
@@ -60,6 +72,48 @@ const goRestartBtn = document.getElementById('go-restart');
 const goResetBtn = document.getElementById('go-reset');
 
 const THEME_KEY = 'tetris-theme';
+
+// ---- Temas visuales / skins ----
+// Cada skin aporta: paleta de 8 colores (equivale a COLORS[1..8]), color de
+// rejilla y de highlight por tema claro/oscuro, y un modo de dibujo de bloque.
+// - retro : comportamiento actual EXACTO (colores planos + highlight superior 4px).
+// - neon  : glow con shadowBlur/shadowColor; fuerza estetica oscura (fondo negro
+//           via body.skin-neon en CSS) y rejilla/highlight fijos.
+// - pastel: colores suaves + esquinas redondeadas con ctx.roundRect (fallback
+//           a fillRect si el navegador no lo soporta). Respeta highlight por tema.
+// - pixel : patron de textura (puntos oscuros) encima de cada bloque. Respeta
+//           highlight por tema.
+const SKIN_KEY = 'tetris-skin';
+const SKINS = {
+  retro: {
+    // reutiliza la paleta global para no duplicarla: retro == comportamiento actual.
+    colors: COLORS,
+    grid: { dark: '#22222e', light: '#d5d5e0' },
+    highlight: { dark: 'rgba(255,255,255,0.12)', light: 'rgba(0,0,0,0.12)' },
+    mode: 'flat',
+  },
+  neon: {
+    colors: [null, '#00e5ff', '#ffea00', '#e040fb', '#00e676', '#ff1744', '#2979ff', '#ff9100', '#cfd8dc'],
+    // rejilla y highlight identicos en ambos temas: neon fuerza su estetica oscura.
+    grid: { dark: '#0b2b33', light: '#0b2b33' },
+    highlight: { dark: 'rgba(255,255,255,0.16)', light: 'rgba(255,255,255,0.16)' },
+    mode: 'neon',
+  },
+  pastel: {
+    colors: [null, '#a0e7e5', '#fdffb6', '#d5b8e8', '#b5ead7', '#ffb3ba', '#a2d2ff', '#ffd8a8', '#d9d9e0'],
+    grid: { dark: '#2b2b36', light: '#e2e2ec' },
+    highlight: { dark: 'rgba(255,255,255,0.20)', light: 'rgba(0,0,0,0.10)' },
+    mode: 'round',
+  },
+  pixel: {
+    colors: [null, '#3fa9c9', '#e0b93c', '#9a55b8', '#5fa563', '#c95050', '#4a82c9', '#d98a35', '#8f9aa3'],
+    grid: { dark: '#1c1c26', light: '#cfcfda' },
+    highlight: { dark: 'rgba(255,255,255,0.10)', light: 'rgba(0,0,0,0.14)' },
+    mode: 'pixel',
+  },
+};
+const SETTINGS_KEY = 'tetris-settings';
+const MAX_START_LEVEL = 15;
 const GRID_COLORS = { dark: '#22222e', light: '#d5d5e0' };
 const HIGHLIGHT_COLORS = { dark: 'rgba(255,255,255,0.12)', light: 'rgba(0,0,0,0.12)' };
 
@@ -68,6 +122,8 @@ const MAX_SCORES = 5;
 const MAX_NAME = 12;
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let startLevelBase = 1; // nivel inicial de la partida en curso; el nivel nunca baja de aquí
+let menuOpen = false;
 let theme = 'dark';
 // ---- records: estado ----
 let scores = [];        // top 5 { name, score } ordenado desc
@@ -78,6 +134,40 @@ let bestComboRun = 0;   // mejor combo de la partida actual
 let running = false;    // hay una partida en curso
 let scoreSubmitted = false; // ya se guardó la puntuación de este game over
 let resetArmed = false;     // confirmación inline del botón "Resetear records"
+let skin = 'retro';
+
+// Ajustes persistidos en localStorage bajo la clave `tetris-settings`.
+let settings = { startLevel: 1 };
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const n = parseInt(parsed && parsed.startLevel, 10);
+      if (n >= 1 && n <= MAX_START_LEVEL) settings.startLevel = n;
+    }
+  } catch (e) {
+    // en file:// el acceso a localStorage puede lanzar; se ignora
+  }
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) {
+    // idem: se ignora si localStorage no está disponible
+  }
+}
+
+function populateLevelSelect() {
+  for (let i = 1; i <= MAX_START_LEVEL; i++) {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = String(i);
+    levelSelect.appendChild(opt);
+  }
+}
 
 function applyTheme(t) {
   theme = t;
@@ -249,6 +339,41 @@ goResetBtn.addEventListener('click', () => {
     goNameRow.classList.add('hidden');
   }
   renderScoreRows(goScoresEl, null);
+// ---- skins: calcado de applyTheme / initTheme ----
+function isSkin(name) {
+  return Object.prototype.hasOwnProperty.call(SKINS, name);
+}
+
+function applySkin(name) {
+  skin = isSkin(name) ? name : 'retro';
+  document.body.classList.remove('skin-retro', 'skin-neon', 'skin-pastel', 'skin-pixel');
+  document.body.classList.add('skin-' + skin);
+  try {
+    localStorage.setItem(SKIN_KEY, skin);
+  } catch (e) {
+    /* localStorage no disponible (modo privado, etc.) */
+  }
+  // Repintar de inmediato sin recargar. current/next solo existen tras spawn().
+  if (current && next) {
+    draw();
+    drawNext();
+  }
+}
+
+function initSkin() {
+  let saved = null;
+  try {
+    saved = localStorage.getItem(SKIN_KEY);
+  } catch (e) {
+    /* localStorage no disponible */
+  }
+  applySkin(isSkin(saved) ? saved : 'retro');
+  skinSelect.value = skin;
+}
+
+skinSelect.addEventListener('change', () => {
+  applySkin(skinSelect.value);
+  skinSelect.blur();
 });
 
 function createBoard() {
@@ -318,7 +443,7 @@ function clearLines() {
     if (combo > bestComboRun) bestComboRun = combo;
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
-    level = Math.floor(lines / 10) + 1;
+    level = Math.max(startLevelBase, Math.floor(lines / 10) + 1);
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
     updateHUD();
   } else {
@@ -374,18 +499,63 @@ function updateHUD() {
 
 function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
-  const color = COLORS[colorIndex];
+  const active = SKINS[skin];
+  const color = active.colors[colorIndex];
+  const px = x * size + 1;
+  const py = y * size + 1;
+  const inner = size - 2;
   context.globalAlpha = alpha ?? 1;
-  context.fillStyle = color;
-  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
-  // highlight
-  context.fillStyle = HIGHLIGHT_COLORS[theme];
-  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+
+  if (active.mode === 'neon') {
+    // Glow: pintar el bloque con sombra y RESETEAR shadowBlur al terminar,
+    // si no contamina la rejilla, el ghost y el siguiente bloque.
+    context.save();
+    context.shadowColor = color;
+    context.shadowBlur = size * 0.45;
+    context.fillStyle = color;
+    context.fillRect(px, py, inner, inner);
+    context.restore();
+    context.shadowBlur = 0;
+    context.fillStyle = active.highlight[theme];
+    context.fillRect(px, py, inner, 4);
+  } else if (active.mode === 'round') {
+    // Esquinas redondeadas simuladas con roundRect (fallback: fillRect).
+    context.fillStyle = color;
+    if (typeof context.roundRect === 'function') {
+      context.beginPath();
+      context.roundRect(px, py, inner, inner, Math.max(2, size * 0.2));
+      context.fill();
+    } else {
+      context.fillRect(px, py, inner, inner);
+    }
+    context.fillStyle = active.highlight[theme];
+    context.fillRect(px, py, inner, 4);
+  } else if (active.mode === 'pixel') {
+    // Bloque plano + patron de puntos oscuros a modo de textura pixelada.
+    context.fillStyle = color;
+    context.fillRect(px, py, inner, inner);
+    context.fillStyle = 'rgba(0,0,0,0.22)';
+    const step = Math.max(4, Math.floor(size / 5));
+    for (let gx = px + 2; gx < px + inner - 1; gx += step) {
+      for (let gy = py + 2; gy < py + inner - 1; gy += step) {
+        context.fillRect(gx, gy, 2, 2);
+      }
+    }
+    context.fillStyle = active.highlight[theme];
+    context.fillRect(px, py, inner, 4);
+  } else {
+    // retro: comportamiento actual EXACTO (colores planos + highlight 4px).
+    context.fillStyle = color;
+    context.fillRect(px, py, inner, inner);
+    context.fillStyle = active.highlight[theme];
+    context.fillRect(px, py, inner, 4);
+  }
+
   context.globalAlpha = 1;
 }
 
 function drawGrid() {
-  ctx.strokeStyle = GRID_COLORS[theme];
+  ctx.strokeStyle = SKINS[skin].grid[theme];
   ctx.lineWidth = 0.5;
   for (let c = 1; c < COLS; c++) {
     ctx.beginPath();
@@ -462,6 +632,58 @@ function togglePause() {
     overlayBox.classList.remove('hidden');
     overlay.classList.remove('hidden');
   }
+  menuOpen = false;
+  paused = false;
+  cancelAnimationFrame(animId);
+  overlayTitle.textContent = 'GAME OVER';
+  overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
+  pauseMenu.classList.add('hidden');
+  overlayBox.classList.remove('hidden');
+  overlay.classList.remove('hidden');
+}
+
+// Muestra el sub-panel indicado del menú de pausa ('main' | 'controls').
+function showPausePanel(which) {
+  const main = which === 'main';
+  pauseMain.classList.toggle('hidden', !main);
+  pauseControls.classList.toggle('hidden', main);
+}
+
+// Elementos navegables con flechas según el panel visible.
+function menuFocusables() {
+  if (!pauseControls.classList.contains('hidden')) return [controlsBackBtn];
+  return [resumeBtn, menuRestartBtn, showControlsBtn, levelSelect];
+}
+
+function moveMenuFocus(dir) {
+  const items = menuFocusables();
+  const idx = items.indexOf(document.activeElement);
+  const nidx = idx < 0 ? 0 : (idx + dir + items.length) % items.length;
+  items[nidx].focus();
+}
+
+function openPauseMenu() {
+  if (gameOver || menuOpen) return;
+  menuOpen = true;
+  paused = true;
+  cancelAnimationFrame(animId);
+  showPausePanel('main');
+  levelSelect.value = String(settings.startLevel);
+  overlayBox.classList.add('hidden');
+  pauseMenu.classList.remove('hidden');
+  overlay.classList.remove('hidden');
+  resumeBtn.focus();
+}
+
+function closePauseMenu() {
+  if (!menuOpen) return;
+  menuOpen = false;
+  paused = false;
+  pauseMenu.classList.add('hidden');
+  overlayBox.classList.remove('hidden');
+  overlay.classList.add('hidden');
+  lastTime = performance.now(); // evita un dt gigante; dropAccum se conserva a propósito
+  animId = requestAnimationFrame(loop);
 }
 
 function loop(ts) {
@@ -511,17 +733,74 @@ function startGame() {
   paused = false;
   gameOver = false;
   running = true;
+function init(startLevel = 1) {
+  board = createBoard();
+  score = 0;
+  lines = 0;
+  level = startLevel;
+  startLevelBase = startLevel;
+  paused = false;
+  gameOver = false;
+  menuOpen = false;
+  dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   dropAccum = 0;
   next = randomPiece();
   spawn();
   updateHUD();
   lastTime = performance.now();
+  pauseMenu.classList.add('hidden');
+  overlayBox.classList.remove('hidden');
+  overlay.classList.add('hidden');
+  cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
   if (e.code === 'KeyP') { togglePause(); return; }
   if (!running || paused || gameOver || !current) return;
+  // Con el menú de pausa abierto: capturamos navegación y bloqueamos el juego.
+  // Ignoramos la repetición de tecla para evitar movimientos accidentales al volver.
+  if (menuOpen) {
+    if (e.repeat) return;
+    switch (e.code) {
+      case 'KeyP':
+      case 'Escape':
+        e.preventDefault();
+        closePauseMenu();
+        break;
+      case 'ArrowUp':
+        if (document.activeElement === levelSelect) return; // deja que el select cambie de valor
+        e.preventDefault();
+        moveMenuFocus(-1);
+        break;
+      case 'ArrowDown':
+        if (document.activeElement === levelSelect) return;
+        e.preventDefault();
+        moveMenuFocus(1);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (document.activeElement && document.activeElement.tagName !== 'SELECT') {
+          document.activeElement.click();
+        }
+        break;
+      case 'Space':
+        e.preventDefault();
+        break;
+    }
+    return;
+  }
+
+  // Abrir el menú con P o Escape (Escape no hace nada si hay game over).
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    if (e.code === 'Escape' && gameOver) return;
+    e.preventDefault();
+    openPauseMenu();
+    return;
+  }
+
+  // Bloquea todos los inputs de juego mientras está en pausa o game over.
+  if (paused || gameOver) return;
   switch (e.code) {
     case 'ArrowLeft':
       if (!collide(current.shape, current.x - 1, current.y)) current.x--;
@@ -548,4 +827,31 @@ restartBtn.addEventListener('click', () => init());
 
 initTheme();
 loadScores();
+restartBtn.addEventListener('click', () => init(settings.startLevel));
+
+// --- listeners del menú de pausa ---
+resumeBtn.addEventListener('click', closePauseMenu);
+menuRestartBtn.addEventListener('click', () => init(settings.startLevel));
+showControlsBtn.addEventListener('click', () => {
+  showPausePanel('controls');
+  controlsBackBtn.focus();
+});
+controlsBackBtn.addEventListener('click', () => {
+  showPausePanel('main');
+  resumeBtn.focus();
+});
+levelSelect.addEventListener('change', () => {
+  const n = parseInt(levelSelect.value, 10);
+  if (n >= 1 && n <= MAX_START_LEVEL) {
+    settings.startLevel = n;
+    saveSettings();
+  }
+});
+
+initTheme();
+initSkin();
 init();
+loadSettings();
+populateLevelSelect();
+levelSelect.value = String(settings.startLevel);
+init(settings.startLevel);

@@ -17,6 +17,8 @@
   --restart-hover: #9bbdff;
   --grid-color: #22222e;
   --block-highlight: rgba(255, 255, 255, 0.12);
+  --pause-menu-bg: #16161f;
+  --pause-menu-border: #2a2a3a;
 }
 
 body.light-theme {
@@ -38,6 +40,8 @@ body.light-theme {
   --restart-hover: #5b7cf5;
   --grid-color: #d5d5e0;
   --block-highlight: rgba(0, 0, 0, 0.12);
+  --pause-menu-bg: #ffffff;
+  --pause-menu-border: #c4c4d4;
 }
 
 *, *::before, *::after {
@@ -346,12 +350,90 @@ body.light-theme {
 }
 
 .records-screen button {
+/* ---- skins ---- */
+:root {
+  --skin-select-bg: #22223a;
+  --skin-select-border: #3a3a5a;
+  --skin-select-color: #cfcfe0;
+  --skin-neon-board-bg: #05060a;
+}
+
+body.light-theme {
+  --skin-select-bg: #e4e4ee;
+  --skin-select-border: #c4c4d4;
+  --skin-select-color: #333344;
+  --skin-neon-board-bg: #05060a;
+}
+
+#skin-select {
+  background: var(--skin-select-bg);
+  border: 1px solid var(--skin-select-border);
+  border-radius: 4px;
+  color: var(--skin-select-color);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+/* neon fuerza su estetica oscura: fondo negro en ambos canvas
+   independientemente del toggle claro/oscuro */
+body.skin-neon #board,
+body.skin-neon #next-canvas {
+  background: var(--skin-neon-board-bg);
+/* ---- menú de pausa ---- */
+/* Ocultamos `.overlay-box` mientras el menú de pausa está visible
+   (game.js hace toggle de esta clase de forma independiente). */
+.overlay-box.hidden {
+  display: none;
+}
+
+.pause-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  min-width: 240px;
+  padding: 28px 32px;
+  text-align: center;
+  background: var(--pause-menu-bg);
+  border: 1px solid var(--pause-menu-border);
+  border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.pause-menu.hidden {
+  display: none;
+}
+
+.pause-menu-title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: var(--accent);
+}
+
+.pause-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+}
+
+.pause-panel.hidden {
+  display: none;
+}
+
+.pm-btn {
   background: var(--restart-bg);
   color: var(--restart-color);
   border: none;
   border-radius: 6px;
   padding: 8px 20px;
   font-size: 13px;
+  padding: 10px 20px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 1px;
   cursor: pointer;
@@ -380,4 +462,50 @@ body.light-theme {
 #go-reset.armed {
   border-color: var(--overlay-title-color);
   color: var(--overlay-title-color);
+.pm-btn:hover {
+  background: var(--restart-hover);
+}
+
+.pm-btn:focus-visible,
+.pm-level select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pm-level {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--controls-color);
+}
+
+.pm-level select {
+  background: var(--kbd-bg);
+  color: var(--text);
+  border: 1px solid var(--kbd-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pm-controls-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.pm-controls-list li {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--controls-color);
 }
