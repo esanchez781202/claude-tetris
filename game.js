@@ -13,7 +13,7 @@ const COLORS = [
   '#e57373', // Z - red
   '#64b5f6', // J - light blue
   '#ffb74d', // L - orange
-  '#b0bec5', // Tuerca - gris acero
+  '#ff9800', // Tuerca - naranja
 ];
 
 const PIECES = [
@@ -43,6 +43,17 @@ const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggleBtn = document.getElementById('theme-toggle');
 const skinSelect = document.getElementById('skin-select');
+
+// --- menú de pausa ---
+const overlayBox = document.querySelector('.overlay-box');
+const pauseMenu = document.getElementById('pause-menu');
+const pauseMain = document.getElementById('pause-main');
+const pauseControls = document.getElementById('pause-controls');
+const resumeBtn = document.getElementById('pm-resume');
+const menuRestartBtn = document.getElementById('pm-restart');
+const showControlsBtn = document.getElementById('pm-controls');
+const controlsBackBtn = document.getElementById('pm-controls-back');
+const levelSelect = document.getElementById('pm-level-select');
 
 const THEME_KEY = 'tetris-theme';
 
@@ -85,10 +96,49 @@ const SKINS = {
     mode: 'pixel',
   },
 };
+const SETTINGS_KEY = 'tetris-settings';
+const MAX_START_LEVEL = 15;
+const GRID_COLORS = { dark: '#22222e', light: '#d5d5e0' };
+const HIGHLIGHT_COLORS = { dark: 'rgba(255,255,255,0.12)', light: 'rgba(0,0,0,0.12)' };
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let startLevelBase = 1; // nivel inicial de la partida en curso; el nivel nunca baja de aquí
+let menuOpen = false;
 let theme = 'dark';
 let skin = 'retro';
+
+// Ajustes persistidos en localStorage bajo la clave `tetris-settings`.
+let settings = { startLevel: 1 };
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const n = parseInt(parsed && parsed.startLevel, 10);
+      if (n >= 1 && n <= MAX_START_LEVEL) settings.startLevel = n;
+    }
+  } catch (e) {
+    // en file:// el acceso a localStorage puede lanzar; se ignora
+  }
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) {
+    // idem: se ignora si localStorage no está disponible
+  }
+}
+
+function populateLevelSelect() {
+  for (let i = 1; i <= MAX_START_LEVEL; i++) {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = String(i);
+    levelSelect.appendChild(opt);
+  }
+}
 
 function applyTheme(t) {
   theme = t;
@@ -207,7 +257,7 @@ function clearLines() {
   if (cleared) {
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
-    level = Math.floor(lines / 10) + 1;
+    level = Math.max(startLevelBase, Math.floor(lines / 10) + 1);
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
     updateHUD();
   }
@@ -367,24 +417,58 @@ function drawNext() {
 
 function endGame() {
   gameOver = true;
+  menuOpen = false;
+  paused = false;
   cancelAnimationFrame(animId);
   overlayTitle.textContent = 'GAME OVER';
   overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
+  pauseMenu.classList.add('hidden');
+  overlayBox.classList.remove('hidden');
   overlay.classList.remove('hidden');
 }
 
-function togglePause() {
-  if (gameOver) return;
-  paused = !paused;
-  if (!paused) {
-    lastTime = performance.now();
-    loop(lastTime);
-  } else {
-    cancelAnimationFrame(animId);
-    overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
-    overlay.classList.remove('hidden');
-  }
+// Muestra el sub-panel indicado del menú de pausa ('main' | 'controls').
+function showPausePanel(which) {
+  const main = which === 'main';
+  pauseMain.classList.toggle('hidden', !main);
+  pauseControls.classList.toggle('hidden', main);
+}
+
+// Elementos navegables con flechas según el panel visible.
+function menuFocusables() {
+  if (!pauseControls.classList.contains('hidden')) return [controlsBackBtn];
+  return [resumeBtn, menuRestartBtn, showControlsBtn, levelSelect];
+}
+
+function moveMenuFocus(dir) {
+  const items = menuFocusables();
+  const idx = items.indexOf(document.activeElement);
+  const nidx = idx < 0 ? 0 : (idx + dir + items.length) % items.length;
+  items[nidx].focus();
+}
+
+function openPauseMenu() {
+  if (gameOver || menuOpen) return;
+  menuOpen = true;
+  paused = true;
+  cancelAnimationFrame(animId);
+  showPausePanel('main');
+  levelSelect.value = String(settings.startLevel);
+  overlayBox.classList.add('hidden');
+  pauseMenu.classList.remove('hidden');
+  overlay.classList.remove('hidden');
+  resumeBtn.focus();
+}
+
+function closePauseMenu() {
+  if (!menuOpen) return;
+  menuOpen = false;
+  paused = false;
+  pauseMenu.classList.add('hidden');
+  overlayBox.classList.remove('hidden');
+  overlay.classList.add('hidden');
+  lastTime = performance.now(); // evita un dt gigante; dropAccum se conserva a propósito
+  animId = requestAnimationFrame(loop);
 }
 
 function loop(ts) {
@@ -405,26 +489,71 @@ function loop(ts) {
   animId = requestAnimationFrame(loop);
 }
 
-function init() {
+function init(startLevel = 1) {
   board = createBoard();
   score = 0;
   lines = 0;
-  level = 1;
+  level = startLevel;
+  startLevelBase = startLevel;
   paused = false;
   gameOver = false;
-  dropInterval = 1000;
+  menuOpen = false;
+  dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   dropAccum = 0;
   lastTime = performance.now();
   next = randomPiece();
   spawn();
   updateHUD();
+  pauseMenu.classList.add('hidden');
+  overlayBox.classList.remove('hidden');
   overlay.classList.add('hidden');
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP') { togglePause(); return; }
+  // Con el menú de pausa abierto: capturamos navegación y bloqueamos el juego.
+  // Ignoramos la repetición de tecla para evitar movimientos accidentales al volver.
+  if (menuOpen) {
+    if (e.repeat) return;
+    switch (e.code) {
+      case 'KeyP':
+      case 'Escape':
+        e.preventDefault();
+        closePauseMenu();
+        break;
+      case 'ArrowUp':
+        if (document.activeElement === levelSelect) return; // deja que el select cambie de valor
+        e.preventDefault();
+        moveMenuFocus(-1);
+        break;
+      case 'ArrowDown':
+        if (document.activeElement === levelSelect) return;
+        e.preventDefault();
+        moveMenuFocus(1);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (document.activeElement && document.activeElement.tagName !== 'SELECT') {
+          document.activeElement.click();
+        }
+        break;
+      case 'Space':
+        e.preventDefault();
+        break;
+    }
+    return;
+  }
+
+  // Abrir el menú con P o Escape (Escape no hace nada si hay game over).
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    if (e.code === 'Escape' && gameOver) return;
+    e.preventDefault();
+    openPauseMenu();
+    return;
+  }
+
+  // Bloquea todos los inputs de juego mientras está en pausa o game over.
   if (paused || gameOver) return;
   switch (e.code) {
     case 'ArrowLeft':
@@ -448,8 +577,31 @@ document.addEventListener('keydown', e => {
   updateHUD();
 });
 
-restartBtn.addEventListener('click', init);
+restartBtn.addEventListener('click', () => init(settings.startLevel));
+
+// --- listeners del menú de pausa ---
+resumeBtn.addEventListener('click', closePauseMenu);
+menuRestartBtn.addEventListener('click', () => init(settings.startLevel));
+showControlsBtn.addEventListener('click', () => {
+  showPausePanel('controls');
+  controlsBackBtn.focus();
+});
+controlsBackBtn.addEventListener('click', () => {
+  showPausePanel('main');
+  resumeBtn.focus();
+});
+levelSelect.addEventListener('change', () => {
+  const n = parseInt(levelSelect.value, 10);
+  if (n >= 1 && n <= MAX_START_LEVEL) {
+    settings.startLevel = n;
+    saveSettings();
+  }
+});
 
 initTheme();
 initSkin();
 init();
+loadSettings();
+populateLevelSelect();
+levelSelect.value = String(settings.startLevel);
+init(settings.startLevel);
