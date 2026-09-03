@@ -44,7 +44,10 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Vista previa** de la siguiente pieza.
 - **Sistema de puntuación** clásico de Tetris (100 / 300 / 500 / 800 multiplicado por nivel).
 - **Niveles** que aumentan cada 10 líneas y aceleran la caída.
-- **Pausa** y **Game Over** con opción de reinicio.
+- **Menú de pausa** modal (`P` o `Esc`) con _Reanudar_, _Reiniciar_, _Ver controles_ y
+  selector de **nivel inicial** (1–15, persistido en `localStorage` bajo `tetris-settings`
+  y aplicado a la siguiente partida). Navegable con flechas + `Enter`; mientras está abierto
+  se bloquean todos los controles de juego. **Game Over** con opción de reinicio.
 - **Toggle de tema claro/oscuro** (modo oscuro por defecto), con la preferencia guardada en `localStorage`.
 - **Pantalla de inicio** con top 5 de records, mejor combo y líneas máximas; la partida no
   arranca sola, hay que pulsar **JUGAR**.
@@ -94,7 +97,10 @@ Después abre `http://localhost:8000` en el navegador.
 | `↑` o `X` | Rotar la pieza en sentido horario |
 | `↓`       | Soft drop (bajar más rápido)      |
 | `Espacio` | Hard drop (caída instantánea)     |
-| `P`       | Pausar / reanudar                 |
+| `P` / `Esc` | Abrir / cerrar el menú de pausa |
+
+Dentro del menú de pausa: `↑` / `↓` mueven el foco, `Enter` activa la opción, y el
+selector de **Nivel inicial** fija el nivel con el que arrancará la próxima partida.
 
 ---
 
@@ -109,8 +115,10 @@ Define la estructura visual:
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
 - Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza, un selector `#skin-select` de skin visual y la lista de controles.
 - Un botón `#theme-toggle` junto al título para alternar entre modo oscuro y claro.
-- Un `#overlay` que contiene la caja de **PAUSA**, la pantalla de inicio `#start-screen`
-  (top 5 + JUGAR) y la pantalla de game over `#gameover-screen` (records + guardar nombre).
+- Un `#overlay` compartido que aloja, de forma independiente: la `.overlay-box`
+  (GAME OVER heredado), la pantalla de inicio `#start-screen` (top 5 + JUGAR), la
+  pantalla de game over `#gameover-screen` (records + guardar nombre) y el
+  `#pause-menu` modal (Reanudar / Reiniciar / Ver controles / nivel inicial).
 
 ### 2. `style.css`
 
@@ -154,7 +162,8 @@ startGame()
      ├─ draw()  (grid + tablero + ghost + pieza actual)
      └─ requestAnimationFrame(loop)
 
-   keydown → mover / rotar / soft-drop / hard-drop / pausa
+   keydown → mover / rotar / soft-drop / hard-drop
+           → P o Esc abre `#pause-menu` (bloquea el juego); init(startLevel) reinicia
 ```
 
 Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara `endGame()`, que consolida los records globales (`bestCombo`, `maxLines`), los persiste y muestra `#gameover-screen`.

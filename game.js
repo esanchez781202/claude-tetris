@@ -60,6 +60,16 @@ const goScoresEl = document.getElementById('go-scores');
 const goRestartBtn = document.getElementById('go-restart');
 const goResetBtn = document.getElementById('go-reset');
 
+// --- menú de pausa ---
+const pauseMenu = document.getElementById('pause-menu');
+const pauseMain = document.getElementById('pause-main');
+const pauseControls = document.getElementById('pause-controls');
+const resumeBtn = document.getElementById('pm-resume');
+const menuRestartBtn = document.getElementById('pm-restart');
+const showControlsBtn = document.getElementById('pm-controls');
+const controlsBackBtn = document.getElementById('pm-controls-back');
+const levelSelect = document.getElementById('pm-level-select');
+
 const THEME_KEY = 'tetris-theme';
 
 // ---- Temas visuales / skins ----
@@ -105,8 +115,12 @@ const SKINS = {
 const SCORES_KEY = 'tetris-scores';
 const MAX_SCORES = 5;
 const MAX_NAME = 12;
+const SETTINGS_KEY = 'tetris-settings';
+const MAX_START_LEVEL = 15;
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let startLevelBase = 1; // nivel inicial de la partida en curso; el nivel nunca baja de aquí
+let menuOpen = false;
 let theme = 'dark';
 let skin = 'retro';
 // ---- records: estado ----
@@ -118,6 +132,39 @@ let bestComboRun = 0;   // mejor combo de la partida actual
 let running = false;    // hay una partida en curso
 let scoreSubmitted = false; // ya se guardó la puntuación de este game over
 let resetArmed = false;     // confirmación inline del botón "Resetear records"
+
+// Ajustes persistidos en localStorage bajo la clave `tetris-settings`.
+let settings = { startLevel: 1 };
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const n = parseInt(parsed && parsed.startLevel, 10);
+      if (n >= 1 && n <= MAX_START_LEVEL) settings.startLevel = n;
+    }
+  } catch (e) {
+    // en file:// el acceso a localStorage puede lanzar; se ignora
+  }
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) {
+    // idem: se ignora si localStorage no está disponible
+  }
+}
+
+function populateLevelSelect() {
+  for (let i = 1; i <= MAX_START_LEVEL; i++) {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = String(i);
+    levelSelect.appendChild(opt);
+  }
+}
 
 function applyTheme(t) {
   theme = t;
@@ -394,7 +441,7 @@ function clearLines() {
     if (combo > bestComboRun) bestComboRun = combo;
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
-    level = Math.floor(lines / 10) + 1;
+    level = Math.max(startLevelBase, Math.floor(lines / 10) + 1);
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
     updateHUD();
   } else {
@@ -558,31 +605,61 @@ function drawNext() {
 function endGame() {
   gameOver = true;
   running = false;
+  menuOpen = false;
+  paused = false;
   cancelAnimationFrame(animId);
   // consolidar records globales de esta partida
   if (bestComboRun > bestCombo) bestCombo = bestComboRun;
   if (lines > maxLines) maxLines = lines;
   saveScores();
+  pauseMenu.classList.add('hidden');
   showGameoverScreen();
 }
 
-function togglePause() {
-  if (gameOver || !running) return;
-  paused = !paused;
-  if (!paused) {
-    overlayBox.classList.add('hidden');
-    overlay.classList.add('hidden');
-    lastTime = performance.now();
-    loop(lastTime);
-  } else {
-    cancelAnimationFrame(animId);
-    overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
-    startScreen.classList.add('hidden');
-    gameoverScreen.classList.add('hidden');
-    overlayBox.classList.remove('hidden');
-    overlay.classList.remove('hidden');
-  }
+// Muestra el sub-panel indicado del menú de pausa ('main' | 'controls').
+function showPausePanel(which) {
+  const main = which === 'main';
+  pauseMain.classList.toggle('hidden', !main);
+  pauseControls.classList.toggle('hidden', main);
+}
+
+// Elementos navegables con flechas según el panel visible.
+function menuFocusables() {
+  if (!pauseControls.classList.contains('hidden')) return [controlsBackBtn];
+  return [resumeBtn, menuRestartBtn, showControlsBtn, levelSelect];
+}
+
+function moveMenuFocus(dir) {
+  const items = menuFocusables();
+  const idx = items.indexOf(document.activeElement);
+  const nidx = idx < 0 ? 0 : (idx + dir + items.length) % items.length;
+  items[nidx].focus();
+}
+
+function openPauseMenu() {
+  if (gameOver || !running || menuOpen) return;
+  menuOpen = true;
+  paused = true;
+  cancelAnimationFrame(animId);
+  showPausePanel('main');
+  levelSelect.value = String(settings.startLevel);
+  startScreen.classList.add('hidden');
+  gameoverScreen.classList.add('hidden');
+  overlayBox.classList.add('hidden');
+  pauseMenu.classList.remove('hidden');
+  overlay.classList.remove('hidden');
+  resumeBtn.focus();
+}
+
+function closePauseMenu() {
+  if (!menuOpen) return;
+  menuOpen = false;
+  paused = false;
+  pauseMenu.classList.add('hidden');
+  overlayBox.classList.remove('hidden');
+  overlay.classList.add('hidden');
+  lastTime = performance.now(); // evita un dt gigante; dropAccum se conserva a propósito
+  animId = requestAnimationFrame(loop);
 }
 
 function loop(ts) {
@@ -611,16 +688,19 @@ function init(startLevel = 1) {
   score = 0;
   lines = 0;
   level = Math.max(1, Math.floor(startLevel) || 1);
+  startLevelBase = level;
   combo = 0;
   bestComboRun = 0;
   paused = false;
   gameOver = false;
   running = false;
+  menuOpen = false;
   dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   dropAccum = 0;
   current = null;
   next = null;
   updateHUD();
+  pauseMenu.classList.add('hidden');
   showStartScreen();
 }
 
@@ -628,9 +708,11 @@ function init(startLevel = 1) {
 function startGame() {
   if (running) return;
   startScreen.classList.add('hidden');
+  pauseMenu.classList.add('hidden');
   overlay.classList.add('hidden');
   paused = false;
   gameOver = false;
+  menuOpen = false;
   running = true;
   dropAccum = 0;
   next = randomPiece();
@@ -641,7 +723,48 @@ function startGame() {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP') { togglePause(); return; }
+  // Con el menú de pausa abierto: capturamos navegación y bloqueamos el juego.
+  // Ignoramos la repetición de tecla para evitar movimientos accidentales al volver.
+  if (menuOpen) {
+    if (e.repeat) return;
+    switch (e.code) {
+      case 'KeyP':
+      case 'Escape':
+        e.preventDefault();
+        closePauseMenu();
+        break;
+      case 'ArrowUp':
+        if (document.activeElement === levelSelect) return; // deja que el select cambie de valor
+        e.preventDefault();
+        moveMenuFocus(-1);
+        break;
+      case 'ArrowDown':
+        if (document.activeElement === levelSelect) return;
+        e.preventDefault();
+        moveMenuFocus(1);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (document.activeElement && document.activeElement.tagName !== 'SELECT') {
+          document.activeElement.click();
+        }
+        break;
+      case 'Space':
+        e.preventDefault();
+        break;
+    }
+    return;
+  }
+
+  // Abrir el menú con P o Escape (solo con una partida en curso).
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    if (!running || gameOver) return;
+    e.preventDefault();
+    openPauseMenu();
+    return;
+  }
+
+  // Bloquea todos los inputs de juego fuera de partida, en pausa o en game over.
   if (!running || paused || gameOver || !current) return;
   switch (e.code) {
     case 'ArrowLeft':
@@ -665,9 +788,31 @@ document.addEventListener('keydown', e => {
   updateHUD();
 });
 
-restartBtn.addEventListener('click', () => init());
+restartBtn.addEventListener('click', () => init(settings.startLevel));
+
+// --- listeners del menú de pausa ---
+resumeBtn.addEventListener('click', closePauseMenu);
+menuRestartBtn.addEventListener('click', () => init(settings.startLevel));
+showControlsBtn.addEventListener('click', () => {
+  showPausePanel('controls');
+  controlsBackBtn.focus();
+});
+controlsBackBtn.addEventListener('click', () => {
+  showPausePanel('main');
+  resumeBtn.focus();
+});
+levelSelect.addEventListener('change', () => {
+  const n = parseInt(levelSelect.value, 10);
+  if (n >= 1 && n <= MAX_START_LEVEL) {
+    settings.startLevel = n;
+    saveSettings();
+  }
+});
 
 initTheme();
 initSkin();
 loadScores();
-init();
+loadSettings();
+populateLevelSelect();
+levelSelect.value = String(settings.startLevel);
+init(settings.startLevel);
