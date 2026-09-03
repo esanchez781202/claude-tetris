@@ -231,6 +231,37 @@ kbd {
   background: var(--restart-hover);
 }
 
+/* ---- skins ---- */
+:root {
+  --skin-select-bg: #22223a;
+  --skin-select-border: #3a3a5a;
+  --skin-select-color: #cfcfe0;
+  --skin-neon-board-bg: #05060a;
+}
+
+body.light-theme {
+  --skin-select-bg: #e4e4ee;
+  --skin-select-border: #c4c4d4;
+  --skin-select-color: #333344;
+  --skin-neon-board-bg: #05060a;
+}
+
+#skin-select {
+  background: var(--skin-select-bg);
+  border: 1px solid var(--skin-select-border);
+  border-radius: 4px;
+  color: var(--skin-select-color);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+/* neon fuerza su estetica oscura: fondo negro en ambos canvas
+   independientemente del toggle claro/oscuro */
+body.skin-neon #board,
+body.skin-neon #next-canvas {
+  background: var(--skin-neon-board-bg);
 /* ---- menú de pausa ---- */
 /* Ocultamos `.overlay-box` mientras el menú de pausa está visible
    (game.js hace toggle de esta clase de forma independiente). */
