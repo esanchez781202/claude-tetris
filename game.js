@@ -52,6 +52,8 @@ const startMaxLinesEl = document.getElementById('start-max-lines');
 const playBtn = document.getElementById('play-btn');
 const gameoverScreen = document.getElementById('gameover-screen');
 const goScoreEl = document.getElementById('go-score');
+const goBestComboEl = document.getElementById('go-best-combo');
+const goMaxLinesEl = document.getElementById('go-max-lines');
 const goNameRow = document.getElementById('go-name-row');
 const goNameInput = document.getElementById('go-name');
 const goSaveBtn = document.getElementById('go-save');
@@ -158,10 +160,18 @@ function resetScores() {
   saveScores();
 }
 
-// Repinta una tabla top 5; resalta la fila cuyo objeto === highlight
-function renderScoreRows(tbody, highlight) {
+// Repinta una tabla top 5; resalta la fila cuyo objeto === highlight.
+// Si `pending` (número) entra en el top, inserta una fila provisional
+// resaltada con nombre "—" sin tocar el estado persistido.
+function renderScoreRows(tbody, highlight, pending) {
   tbody.innerHTML = '';
-  if (!scores.length) {
+  let rows = scores;
+  if (typeof pending === 'number' && qualifies(pending)) {
+    const provisional = { name: '—', score: Math.floor(pending), provisional: true };
+    rows = scores.concat(provisional).sort((a, b) => b.score - a.score).slice(0, MAX_SCORES);
+    highlight = provisional;
+  }
+  if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 3;
@@ -171,7 +181,7 @@ function renderScoreRows(tbody, highlight) {
     tbody.appendChild(tr);
     return;
   }
-  scores.forEach((e, i) => {
+  rows.forEach((e, i) => {
     const tr = document.createElement('tr');
     if (highlight && e === highlight) tr.className = 'records-highlight';
     const rank = document.createElement('td');
@@ -199,6 +209,8 @@ function showGameoverScreen() {
   overlayBox.classList.add('hidden');
   startScreen.classList.add('hidden');
   goScoreEl.textContent = score.toLocaleString();
+  goBestComboEl.textContent = bestCombo.toLocaleString();
+  goMaxLinesEl.textContent = maxLines.toLocaleString();
   scoreSubmitted = false;
   disarmReset();
   if (qualifies(score)) {
@@ -207,7 +219,7 @@ function showGameoverScreen() {
   } else {
     goNameRow.classList.add('hidden');
   }
-  renderScoreRows(goScoresEl, null);
+  renderScoreRows(goScoresEl, null, score);
   gameoverScreen.classList.remove('hidden');
   overlay.classList.remove('hidden');
 }
@@ -248,7 +260,7 @@ goResetBtn.addEventListener('click', () => {
   } else {
     goNameRow.classList.add('hidden');
   }
-  renderScoreRows(goScoresEl, null);
+  renderScoreRows(goScoresEl, null, scoreSubmitted ? undefined : score);
 });
 
 function createBoard() {
