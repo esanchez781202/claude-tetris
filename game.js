@@ -44,6 +44,14 @@ const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggleBtn = document.getElementById('theme-toggle');
 
+// ---- menú de pausa ----
+const pauseScreen = document.getElementById('pause-screen');
+const pauseResumeBtn = document.getElementById('pause-resume');
+const pauseRestartBtn = document.getElementById('pause-restart');
+const pauseControlsBtn = document.getElementById('pause-controls-btn');
+const pauseControls = document.getElementById('pause-controls');
+const pauseLevelSelect = document.getElementById('pause-level-select');
+
 // ---- records: elementos de las pantallas de inicio / game over ----
 const startScreen = document.getElementById('start-screen');
 const startScoresEl = document.getElementById('start-scores');
@@ -68,6 +76,10 @@ const HIGHLIGHT_COLORS = { dark: 'rgba(255,255,255,0.12)', light: 'rgba(0,0,0,0.
 const SCORES_KEY = 'tetris-scores';
 const MAX_SCORES = 5;
 const MAX_NAME = 12;
+
+const START_LEVEL_KEY = 'tetris-start-level';
+const MAX_START_LEVEL = 20;
+let startLevelChoice = 1; // nivel con el que arrancará la próxima partida
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 let theme = 'dark';
@@ -261,6 +273,46 @@ goResetBtn.addEventListener('click', () => {
     goNameRow.classList.add('hidden');
   }
   renderScoreRows(goScoresEl, null, scoreSubmitted ? undefined : score);
+});
+
+// ---- menú de pausa: nivel inicial ----
+function loadStartLevel() {
+  const n = parseInt(localStorage.getItem(START_LEVEL_KEY), 10);
+  startLevelChoice = (isFinite(n) && n >= 1 && n <= MAX_START_LEVEL) ? n : 1;
+}
+
+function setStartLevel(n) {
+  startLevelChoice = Math.min(MAX_START_LEVEL, Math.max(1, Math.floor(n) || 1));
+  try {
+    localStorage.setItem(START_LEVEL_KEY, String(startLevelChoice));
+  } catch (e) {
+    /* almacenamiento no disponible: se ignora */
+  }
+}
+
+for (let i = 1; i <= MAX_START_LEVEL; i++) {
+  const opt = document.createElement('option');
+  opt.value = String(i);
+  opt.textContent = 'Nivel ' + i;
+  pauseLevelSelect.appendChild(opt);
+}
+
+pauseLevelSelect.addEventListener('change', () => {
+  setStartLevel(parseInt(pauseLevelSelect.value, 10));
+});
+
+pauseResumeBtn.addEventListener('click', () => {
+  if (paused) togglePause();
+});
+
+pauseRestartBtn.addEventListener('click', () => {
+  paused = false;
+  init(startLevelChoice);
+  startGame();
+});
+
+pauseControlsBtn.addEventListener('click', () => {
+  pauseControls.classList.toggle('hidden');
 });
 
 function createBoard() {
@@ -461,17 +513,19 @@ function togglePause() {
   if (gameOver || !running) return;
   paused = !paused;
   if (!paused) {
-    overlayBox.classList.add('hidden');
+    pauseScreen.classList.add('hidden');
+    pauseControls.classList.add('hidden');
     overlay.classList.add('hidden');
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
-    overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
+    overlayBox.classList.add('hidden');
     startScreen.classList.add('hidden');
     gameoverScreen.classList.add('hidden');
-    overlayBox.classList.remove('hidden');
+    pauseControls.classList.add('hidden');
+    pauseLevelSelect.value = String(startLevelChoice);
+    pauseScreen.classList.remove('hidden');
     overlay.classList.remove('hidden');
   }
 }
@@ -496,8 +550,10 @@ function loop(ts) {
 
 // init() resetea el estado y muestra la pantalla de inicio.
 // NO arranca la partida: hay que pulsar JUGAR (-> startGame()).
-function init(startLevel = 1) {
+function init(startLevel = startLevelChoice) {
   cancelAnimationFrame(animId);
+  pauseScreen.classList.add('hidden');
+  pauseControls.classList.add('hidden');
   board = createBoard();
   score = 0;
   lines = 0;
@@ -532,7 +588,7 @@ function startGame() {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP') { togglePause(); return; }
+  if (e.code === 'KeyP' || e.code === 'Escape') { togglePause(); return; }
   if (!running || paused || gameOver || !current) return;
   switch (e.code) {
     case 'ArrowLeft':
@@ -560,4 +616,5 @@ restartBtn.addEventListener('click', () => init());
 
 initTheme();
 loadScores();
+loadStartLevel();
 init();
