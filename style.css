@@ -95,6 +95,34 @@ body {
   background: var(--kbd-bg);
 }
 
+.skin-select {
+  background: var(--bg);
+  border: 1px solid var(--board-border);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--text);
+  transition: background 0.15s;
+}
+
+.skin-select:hover {
+  background: var(--kbd-bg);
+}
+
+/* fondo del área tras el canvas, acorde a la skin */
+body.skin-neon #board,
+body.skin-neon #next-canvas {
+  background: #000;
+}
+
+body.skin-pastel #board,
+body.skin-pastel #next-canvas {
+  background: #fdf7ff;
+}
+
 .game-container {
   display: flex;
   gap: 20px;
